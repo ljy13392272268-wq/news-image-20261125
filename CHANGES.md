@@ -1,6 +1,7 @@
 # news-image-20261125 - v3 changes
 
 26 November 2026. Owner review pass on the entry; nothing was submitted.
+This file now covers two passes: round 1 (v3) below, round 2 (v4) at the end.
 
 ## Where this pass concentrated
 
@@ -118,7 +119,95 @@ If a different balance is preferred - for example a slightly smaller footer
 band in exchange for more air above it - that is a small change in `render()`,
 where the grid constants are grouped and the footer offsets sit beside them.
 
-## Muse verification note (2026-11-26)
+---
+
+# Round 2 - v4 changes
+
+26 November 2026. Second owner review pass on the same entry; nothing was
+submitted. Round 1 (v3) above is unchanged.
+
+## Where this pass concentrated
+
+The 300 px view was still limited by the smallest text, and the footer band
+sat bottom-heavy. The pass takes the three type levers noted at the end of
+round 1 - detail size, label size, footer band - and keeps only the ones that
+read better.
+
+## What changed
+
+1. Details 28 -> 30 px on all six cards (criterion 5, criterion 3).
+   - At 300 px a 30 px line is about 8.8 px, against 8.2 px for 28.
+   - Every card still fits two lines. The space detail keeps its full
+     verified wording and breaks after "docked in", so "3.5 hours" is not
+     split: "Shenzhou-24 docked in / 3.5 hours; first Pakistani aboard."
+     This is the only copy change in the pass; the facts are unchanged.
+   - Leading 32 -> 34 px, so the 30 px lines do not touch. The block still
+     starts at y+160 and its last ink row is y+228, 8 px above the card edge.
+2. Region labels 25 -> 27 px (criterion 5).
+   - The chip stays 36 px tall; the widest label, SCIENCE & SPACE, is 274 px
+     wide and still ends 105 px left of the icon at x+397. No collision, no
+     clipped chip text.
+3. Footer band 76 -> 72 px and moved down 948 -> 952 (criterion 5).
+   - The gap above the band grows 20 -> 24 px; the two 27 px lines sit at
+     954 and 986 with 32 px leading. Ink runs 959..1016, so the band now has
+     7 px of navy above and 8 px below, instead of 13 above and 5 below.
+   - The type stays 27 px; no shrink is needed (line widths 872 and 900 px
+     against the 968 px limit).
+
+## What did not change
+
+- The six stories, their order, the verified facts and the date
+  "WEDNESDAY, 25 NOVEMBER 2026". No story swapped, no claim added.
+- Headlines stay 40 px bold on two lines, the date 42 px, the masthead 64 px
+  serif, the icons 54 px, the 2 x 3 grid and 236 px cards.
+- `main.py` unchanged; `entry.png.b64` regenerated as one line from the new
+  `entry.png`.
+- README, LICENSE and .makefun/owner.json untouched; no submission, no
+  transcripts, no keys or secrets, no links in the image or the code.
+
+## Ideas tried and set aside
+
+- 30 px details on the old space wording. It needs 464 px for the second
+  line against 433, so the fitter would drop that one card to 28 or split
+  "3.5 / hours". The manual break after "docked in" keeps both 30 px and the
+  whole phrase; the short first line is the price and it reads cleanly.
+- "a Pakistani first", "Pakistani aboard" or "docked 3.5 hours after
+  launch" at 30 px. Each fits without a manual break but gives up "first
+  Pakistani aboard", "aboard" or "Shenzhou-24" respectively; not worth the
+  smaller rag. Set aside.
+- 64 px icons. Round 1 measured a collision with the first headline line on
+  cards 1 and 2 at 40 px; nothing in this pass changes the label row, so it
+  was not retried.
+- A 70 px footer band. It would leave 6 px of navy inside; 72 px is the
+  balance between a smaller band and air around the type.
+- A darker detail grey (58, 70, 83). It is crisper at 300 px, but at 1024 px
+  it reads heavier than the v3 grey and starts to compete with the headlines;
+  kept (74, 85, 96).
+- Detail 30 px with the automatic wrap. It breaks between "3.5" and "hours"
+  on the space card; rejected for the manual break.
+
+## Verification
+
+- Reference files (v3, downloaded from the reference branch): all five sizes
+  and sha256 match the handover; decoded `entry.png` is 150,266 bytes,
+  1024x1024, sha256 70c2fde6...f3bd7fe6.
+- `main.py` run twice in separate output directories: identical bytes,
+  154,580 bytes, mode 644, sha256 efdcbce9...c83c91f6d, identical to the new
+  `entry.png`.
+- `generate_image.py` run twice: identical sha256, 154,580 bytes each.
+- PNG: IHDR 1024x1024, 8-bit RGB, IDAT 65536 + 65536 + 23427, IEND; every
+  chunk CRC32 OK; PIL verify and reopen OK. 154,580 bytes is well under
+  1,048,576.
+- Type check from the rendered image: all six headlines 40 px on two lines,
+  all six details 30 px on two lines, labels 27 px, footer 27 px; no text
+  outside a card, no chip/icon or headline/icon collision.
+- Visual check at 1024 px and at 300 px; see `verification/verify.txt`,
+  `verification/preview_300.png`, `verification/compare_v3_v4_300.png` and
+  `verification/compare_details_300.png`. At 300 px the masthead, date and
+  all six headlines read without zoom; the details now resolve as words
+  (about 8.8 px); the 27 px labels read with their colour and icon.
+
+## Muse verification note, round 1 (2026-11-26)
 
 - main.py is byte-identical to v2; entry.png.b64 decodes to entry.png byte
   for byte (sha256 70c2fde6df2ed439dcea0639c472621978a1de82b2a51401f568f287f3bd7fe6).
@@ -126,5 +215,17 @@ where the grid constants are grouped and the footer offsets sit beside them.
   2 lines on this machine (Liberation fonts present); footer at 27 px.
 - A local re-render of generate_image.py on this machine produces the same
   layout but 155,366 bytes (vs 150,266 here): the pixels differ only by
+  font antialiasing between machines. The shipped image is Doubao's
+  verified bytes; main.py serves those bytes deterministically.
+
+## Muse verification note, round 2 (2026-11-27)
+
+- main.py is byte-identical to v3; entry.png.b64 decodes to entry.png byte
+  for byte (sha256 efdcbce94f9a467a5c384310976820570bf9497edcf78458143027cd83c91f6d).
+- All six headlines fit at 40 px / 2 lines and all six details at 30 px /
+  2 lines on this machine (Liberation fonts present); tags at 27 px, footer
+  at 27 px; the space detail breaks after "docked in" as written.
+- A local re-render of generate_image.py on this machine produces the same
+  layout but 159,133 bytes (vs 154,580 here): the pixels differ only by
   font antialiasing between machines. The shipped image is Doubao's
   verified bytes; main.py serves those bytes deterministically.

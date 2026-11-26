@@ -18,6 +18,15 @@ three wordings tightened so they rest only on the verified facts
 (markets no longer asserts a chip-share cause; Huawei's racketeering
 acquittal is shown; the space line carries "first Pakistani"). Facts,
 date and the six stories are unchanged.
+
+v4 (26 Nov 2026): a second and smaller pass on the same 300 px view.
+The details rise to 30 px - all six now fit two lines at 30, with the
+space detail broken after "docked in" so "3.5 hours" is not split
+across lines. The region labels rise to 27 px, still inside the 36 px
+chip and clear of the icons. The footer band is trimmed to 72 px and
+moved down 4 px, so the grid gains air above it while the two 27 px
+lines keep 7 px of navy above and 8 px below. Facts, date, stories and the
+other wordings are unchanged.
 """
 
 import os
@@ -108,7 +117,7 @@ STORIES = [
         "color": (46, 125, 50),
         "icon": "rocket",
         "headline": "Pakistani astronaut reaches Tiangong",
-        "detail": "Shenzhou-24 docked 3.5 hours after launch; first Pakistani aboard.",
+        "detail": "Shenzhou-24 docked in\n3.5 hours; first Pakistani aboard.",
     },
     {
         "tag": "INDO-PACIFIC",
@@ -162,7 +171,7 @@ def draw_text_block(draw, x, y, lines, fnt, fill, leading):
 
 
 def chip(draw, x, y, text, color):
-    fnt = font("bold", 25)
+    fnt = font("bold", 27)
     tw = draw.textlength(text, font=fnt)
     pad = 14
     w = int(tw) + pad * 2
@@ -299,18 +308,19 @@ def render(path):
                                           [40, 38, 36], cw - 36, 2)
         draw_text_block(d, x + 18, y + 66, head_lines, head_font, INK, 45)
         det_font, det_lines = fit_lines(d, story["detail"], "regular",
-                                        [28, 27, 26, 24], cw - 36, 2)
-        draw_text_block(d, x + 18, y + 160, det_lines, det_font, GREY, 32)
+                                        [30, 29, 28, 26, 24], cw - 36, 2)
+        draw_text_block(d, x + 18, y + 160, det_lines, det_font, GREY, 34)
 
-    # Footer strip: two more stories, one line each, shrunk to fit
-    d.rectangle([0, 948, W, H], fill=NAVY)
+    # Footer strip: two more stories, one line each. The 72 px band sits
+    # 24 px below the cards; 27 px type leaves 7 px of navy above and 8 below.
+    d.rectangle([0, 952, W, H], fill=NAVY)
     foot_font = font("bold", 27)
     while foot_font.size > 20 and any(
             d.textlength(t, font=foot_font) > 968 for t in FOOTER_LINES):
         foot_font = font("bold", foot_font.size - 1)
     for i, text in enumerate(FOOTER_LINES):
         fw = d.textlength(text, font=foot_font)
-        d.text(((W - fw) / 2, 956 + i * 32), text, font=foot_font, fill=WHITE)
+        d.text(((W - fw) / 2, 954 + i * 32), text, font=foot_font, fill=WHITE)
 
     img.save(path, format="PNG", optimize=True)
     return path
