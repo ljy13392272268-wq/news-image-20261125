@@ -1,39 +1,31 @@
 #!/usr/bin/env python3
-"""Render the 25 November 2026 world-news summary image (1024x1024 PNG).
+"""Draw the 25 November 2026 world-news summary as a 1024x1024 PNG.
 
-The news items below are embedded data: the graded program runs with no
-network, so the image is drawn from these verified items, all of which
-happened or were first reported on Wednesday 25 November 2026.
+One-page newspaper layout: a navy masthead, a centred date line, six
+story cards in a 2x3 grid, and a navy footer band with two more stories.
 
-Sources checked 2026-11-26: Just Security Early Edition 25 Nov 2026,
-ISW Russian Offensive Campaign Assessment Nov 25 2026, Reuters via
-DailyFoxNews (Samara refineries), NordFX Market Pulse Nov 25 2026,
-market_brief.na.to (Nov 25 closes), Open Chronicle Global News Brief
-Nov 25 2026, and the Nov 25 evening news roundup.
-
-v3 (26 Nov 2026): the type scale is rebuilt for the ~300 px view (the
-headlines at 40 px, the details at 28 px, the region labels at 25 px,
-the footer at 27 px on two lines); the masthead uses a serif nameplate;
-three wordings tightened so they rest only on the verified facts
-(markets no longer asserts a chip-share cause; Huawei's racketeering
-acquittal is shown; the space line carries "first Pakistani"). Facts,
-date and the six stories are unchanged.
-
-v4 (26 Nov 2026): a second and smaller pass on the same 300 px view.
-The details rise to 30 px - all six now fit two lines at 30, with the
-space detail broken after "docked in" so "3.5 hours" is not split
-across lines. The region labels rise to 27 px, still inside the 36 px
-chip and clear of the icons. The footer band is trimmed to 72 px and
-moved down 4 px, so the grid gains air above it while the two 27 px
-lines keep 7 px of navy above and 8 px below. Facts, date, stories and the
-other wordings are unchanged.
+Every news wording below is fixed copy, verified against 25 November 2026
+reporting. The generator takes no input and makes no network calls, so
+re-running it produces byte-identical output.
 """
 
 import os
+import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1024, 1024
+# --- page geometry -------------------------------------------------------
+PAGE_W, PAGE_H = 1024, 1024
+MASTHEAD_H = 132
+RULE_H = 6
+DATE_Y = 144
+GRID_X, GRID_TOP = 36, 192
+CARD_W, CARD_H = 469, 236
+GAP = 14
+FOOTER_Y, FOOTER_H = 952, 72
+TEXT_W = CARD_W - 36  # text column inside a card
+
+# --- palette -------------------------------------------------------------
 PAPER = (247, 243, 234)
 NAVY = (16, 36, 62)
 RED = (192, 57, 43)
@@ -43,291 +35,270 @@ CARD = (255, 255, 255)
 BORDER = (221, 213, 196)
 WHITE = (255, 255, 255)
 
-# Fonts: Liberation Sans first (narrower, so the headlines can run at
-# 40 px), DejaVu as a fallback on machines that lack Liberation.
-FONT_CANDIDATES = {
-    "bold": [
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    ],
-    "regular": [
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ],
-    "serif": [
-        "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
-    ],
+# --- type ----------------------------------------------------------------
+# Prefer the narrower Liberation faces (Arial metrics) so the 40 px
+# headlines still fit two lines; DejaVu is the fallback on this machine.
+_LIB = "/usr/share/fonts/truetype/liberation"
+_DJV = "/usr/share/fonts/truetype/dejavu"
+_FACES = {
+    "sans-bold": [os.path.join(_LIB, "LiberationSans-Bold.ttf"),
+                  os.path.join(_DJV, "DejaVuSans-Bold.ttf")],
+    "sans": [os.path.join(_LIB, "LiberationSans-Regular.ttf"),
+             os.path.join(_DJV, "DejaVuSans.ttf")],
+    "serif-bold": [os.path.join(_LIB, "LiberationSerif-Bold.ttf"),
+                   os.path.join(_DJV, "DejaVuSerif-Bold.ttf")],
 }
 
-_FONT_PATH = {}
-_FONT_CACHE = {}
+
+def typeface(kind, size):
+    """First available file for a face kind, at the requested size."""
+    for path in _FACES[kind]:
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
+    raise FileNotFoundError("no font file found for %r" % kind)
 
 
-def font_path(kind):
-    if kind not in _FONT_PATH:
-        chosen = FONT_CANDIDATES[kind][-1]
-        for cand in FONT_CANDIDATES[kind]:
-            if os.path.exists(cand):
-                chosen = cand
-                break
-        _FONT_PATH[kind] = chosen
-    return _FONT_PATH[kind]
+# --- fixed copy (verified 25 November 2026) -------------------------------
+DATE_LINE = "WEDNESDAY, 25 NOVEMBER 2026"
 
-
-def font(kind, size):
-    key = (kind, size)
-    if key not in _FONT_CACHE:
-        _FONT_CACHE[key] = ImageFont.truetype(font_path(kind), size)
-    return _FONT_CACHE[key]
-
-
-# tag, colour, icon, headline (<=2 lines), detail (<=2 lines)
+# detail may hold "\n" to force a line break (card 5: keep "3.5 hours"
+# whole on the second line).
 STORIES = [
-    {
-        "tag": "MIDDLE EAST",
-        "color": (14, 124, 123),
-        "icon": "tanker",
-        "headline": "Two tankers hit mines, ablaze in Hormuz",
-        "detail": "Iran says both oil tankers struck mines and caught fire.",
-    },
-    {
-        "tag": "EUROPE",
-        "color": (166, 106, 0),
-        "icon": "refinery",
-        "headline": "Ukrainian drones set two refineries ablaze",
-        "detail": "Syzran and Kuibyshev hit overnight; 145 drones downed.",
-    },
-    {
-        "tag": "ECONOMY",
-        "color": (46, 95, 163),
-        "icon": "chart",
-        "headline": "Asia stocks plunge; KOSPI falls 6.2%",
-        "detail": "Nikkei -2.8%, Taiwan -5%; Dow holds above 50,000.",
-    },
-    {
-        "tag": "TECHNOLOGY",
-        "color": (122, 63, 160),
-        "icon": "chip",
-        "headline": "U.S. jury convicts Huawei of fraud",
-        "detail": "Guilty on 10 of 12 counts; not guilty of racketeering.",
-    },
-    {
-        "tag": "SCIENCE & SPACE",
-        "color": (46, 125, 50),
-        "icon": "rocket",
-        "headline": "Pakistani astronaut reaches Tiangong",
-        "detail": "Shenzhou-24 docked in\n3.5 hours; first Pakistani aboard.",
-    },
-    {
-        "tag": "INDO-PACIFIC",
-        "color": (192, 57, 43),
-        "icon": "globe",
-        "headline": "Australia, Solomons sign no-base treaty",
-        "detail": "Treaty bars any foreign military or security base.",
-    },
+    dict(tag="MIDDLE EAST", colour=(14, 124, 123), icon="tanker",
+         headline="Two tankers hit mines, ablaze in Hormuz",
+         detail="Iran says both oil tankers struck mines and caught fire."),
+    dict(tag="EUROPE", colour=(166, 106, 0), icon="refinery",
+         headline="Ukrainian drones set two refineries ablaze",
+         detail="Syzran and Kuibyshev hit overnight; 145 drones downed."),
+    dict(tag="ECONOMY", colour=(46, 95, 163), icon="chart",
+         headline="Asia stocks plunge; KOSPI falls 6.2%",
+         detail="Nikkei -2.8%, Taiwan -5%; Dow holds above 50,000."),
+    dict(tag="TECHNOLOGY", colour=(122, 63, 160), icon="chip",
+         headline="U.S. jury convicts Huawei of fraud",
+         detail="Guilty on 10 of 12 counts; not guilty of racketeering."),
+    dict(tag="SCIENCE & SPACE", colour=(46, 125, 50), icon="rocket",
+         headline="Pakistani astronaut reaches Tiangong",
+         detail="Shenzhou-24 docked in\n3.5 hours; first Pakistani aboard."),
+    dict(tag="INDO-PACIFIC", colour=(192, 57, 43), icon="globe",
+         headline="Australia, Solomons sign no-base treaty",
+         detail="Treaty bars any foreign military or security base."),
 ]
 
 FOOTER_LINES = [
-    "AFRICA \u2014 RSF drone strikes kill 19 civilians, wound 20 in two cities",
-    "CLIMATE \u2014 COP31 ends without a deal; Pope Leo XIV voices concern",
+    "AFRICA — RSF drone strikes kill 19 civilians, wound 20 in two cities",
+    "CLIMATE — COP31 ends without a deal; Pope Leo XIV voices concern",
 ]
 
 
-def wrap(draw, text, fnt, max_w):
-    """Greedy word wrap to a pixel width, honouring explicit newlines."""
-    lines = []
-    for para in text.split("\n"):
-        cur = ""
-        for word in para.split():
-            trial = word if not cur else cur + " " + word
-            if draw.textlength(trial, font=fnt) <= max_w:
-                cur = trial
-            else:
-                if cur:
-                    lines.append(cur)
-                cur = word
-        if cur:
-            lines.append(cur)
+# --- text fitting --------------------------------------------------------
+def wrap_words(draw, text, fnt, max_w):
+    """Greedy word wrap; returns the lines for one unbroken paragraph."""
+    lines, current = [], ""
+    for word in text.split():
+        trial = word if not current else current + " " + word
+        if draw.textlength(trial, font=fnt) <= max_w:
+            current = trial
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
     return lines
 
 
-def fit_lines(draw, text, kind, sizes, max_w, max_lines):
-    """Largest font size (from sizes) whose wrap fits max_lines lines."""
+def fit_block(draw, text, kind, sizes, max_w, max_lines):
+    """Pick the first size whose wrap fits max_lines lines.
+
+    Returns (font, lines, size). A "\n" in the text forces a break and
+    each part is wrapped on its own.
+    """
+    parts = text.split("\n")
     for size in sizes:
-        fnt = font(kind, size)
-        lines = wrap(draw, text, fnt, max_w)
+        fnt = typeface(kind, size)
+        lines = []
+        for part in parts:
+            lines.extend(wrap_words(draw, part, fnt, max_w))
         if len(lines) <= max_lines:
-            return fnt, lines
-    fnt = font(kind, sizes[-1])
-    return fnt, wrap(draw, text, fnt, max_w)[:max_lines]
+            return fnt, lines, size
+    fnt = typeface(kind, sizes[-1])
+    lines = []
+    for part in parts:
+        lines.extend(wrap_words(draw, part, fnt, max_w))
+    return fnt, lines[:max_lines], sizes[-1]
 
 
-def draw_text_block(draw, x, y, lines, fnt, fill, leading):
+def draw_lines(draw, x, y, lines, fnt, fill, leading):
+    """Draw stacked lines; returns the y just below the last line."""
     for line in lines:
         draw.text((x, y), line, font=fnt, fill=fill)
         y += leading
     return y
 
 
-def chip(draw, x, y, text, color):
-    fnt = font("bold", 27)
-    tw = draw.textlength(text, font=fnt)
-    pad = 14
-    w = int(tw) + pad * 2
-    h = 36
-    draw.rounded_rectangle([x, y, x + w, y + h], radius=8, fill=color)
-    draw.text((x + pad, y + h / 2), text, font=fnt, fill=WHITE,
-              anchor="lm")
-    return w
+# --- card furniture ------------------------------------------------------
+def draw_chip(draw, x, y, text, colour):
+    """Coloured tag chip, 36 px tall, 27 px bold white label."""
+    fnt = typeface("sans-bold", 27)
+    width = int(draw.textlength(text, font=fnt)) + 24
+    draw.rounded_rectangle([x, y, x + width, y + 36], radius=8, fill=colour)
+    draw.text((x + 12, y + 18), text, font=fnt, fill=WHITE, anchor="lm")
+    return width
 
 
-def icon_tanker(d, x, y, s, color):
-    # hull, two cargo tanks, bridge, red flame above the deck
-    d.polygon([(x + 0.04 * s, y + 0.60 * s), (x + 0.96 * s, y + 0.60 * s),
-               (x + 0.88 * s, y + 0.86 * s), (x + 0.12 * s, y + 0.86 * s)],
-              fill=color)
-    d.rectangle([x + 0.14 * s, y + 0.30 * s, x + 0.44 * s, y + 0.56 * s],
-                fill=color)
-    d.rectangle([x + 0.48 * s, y + 0.30 * s, x + 0.72 * s, y + 0.56 * s],
-                fill=color)
-    d.rectangle([x + 0.78 * s, y + 0.14 * s, x + 0.84 * s, y + 0.60 * s],
-                fill=color)
-    d.polygon([(x + 0.53 * s, y + 0.30 * s), (x + 0.67 * s, y + 0.30 * s),
-               (x + 0.60 * s, y + 0.06 * s)], fill=RED)
+def draw_tanker(d, x, y, s, colour):
+    hull_top = y + 0.62 * s
+    d.polygon([(x, hull_top), (x + s, hull_top),
+               (x + 0.88 * s, y + 0.86 * s),
+               (x + 0.12 * s, y + 0.86 * s)], fill=colour)
+    d.rectangle([x + 0.14 * s, y + 0.34 * s, x + 0.42 * s, y + 0.60 * s],
+                fill=colour)
+    d.rectangle([x + 0.48 * s, y + 0.34 * s, x + 0.76 * s, y + 0.60 * s],
+                fill=colour)
+    d.rectangle([x + 0.80 * s, y + 0.18 * s, x + 0.84 * s, y + 0.60 * s],
+                fill=colour)
+    d.polygon([(x + 0.48 * s, y + 0.34 * s), (x + 0.62 * s, y + 0.34 * s),
+               (x + 0.55 * s, y + 0.14 * s)], fill=RED)
 
 
-def icon_refinery(d, x, y, s, color):
-    # base, low column, tall column, small stack, red flame on the tall one
-    d.rectangle([x + 0.05 * s, y + 0.62 * s, x + 0.95 * s, y + 0.86 * s],
-                fill=color)
-    d.rectangle([x + 0.13 * s, y + 0.36 * s, x + 0.34 * s, y + 0.62 * s],
-                fill=color)
-    d.rectangle([x + 0.55 * s, y + 0.16 * s, x + 0.71 * s, y + 0.62 * s],
-                fill=color)
-    d.rectangle([x + 0.76 * s, y + 0.38 * s, x + 0.86 * s, y + 0.62 * s],
-                fill=color)
-    d.polygon([(x + 0.57 * s, y + 0.16 * s), (x + 0.69 * s, y + 0.16 * s),
-               (x + 0.63 * s, y - 0.04 * s)], fill=RED)
+def draw_refinery(d, x, y, s, colour):
+    d.rectangle([x + 0.08 * s, y + 0.55 * s, x + 0.92 * s, y + 0.86 * s],
+                fill=colour)
+    d.rectangle([x + 0.16 * s, y + 0.30 * s, x + 0.38 * s, y + 0.55 * s],
+                fill=colour)
+    d.rectangle([x + 0.62 * s, y + 0.14 * s, x + 0.78 * s, y + 0.55 * s],
+                fill=colour)
+    d.polygon([(x + 0.60 * s, y + 0.14 * s), (x + 0.80 * s, y + 0.14 * s),
+               (x + 0.70 * s, y - 0.06 * s)], fill=RED)
 
 
-def icon_chart(d, x, y, s, color):
-    bars = [0.92, 0.74, 0.52, 0.30]
-    bw = 0.16 * s
-    for i, h in enumerate(bars):
+def draw_chart(d, x, y, s, colour):
+    heights = [0.92, 0.74, 0.52, 0.30]
+    bar_w = 0.16 * s
+    for i, h in enumerate(heights):
         bx = x + (0.06 + i * 0.24) * s
-        d.rectangle([bx, y + s - h * s, bx + bw, y + 0.92 * s], fill=color)
-    d.line([x, y + 0.10 * s, x + s, y + 0.62 * s], fill=RED,
-           width=max(3, int(0.09 * s)))
-    d.polygon([(x + s, y + 0.62 * s), (x + 0.80 * s, y + 0.56 * s),
-               (x + 0.94 * s, y + 0.80 * s)], fill=RED)
+        d.rectangle([bx, y + s - h * s, bx + bar_w, y + 0.92 * s],
+                    fill=colour)
+    d.line([x, y + 0.10 * s, x + s, y + 0.62 * s], fill=RED, width=5)
+    d.polygon([(x + s, y + 0.62 * s), (x + 0.82 * s, y + 0.58 * s),
+               (x + 0.94 * s, y + 0.78 * s)], fill=RED)
 
 
-def icon_chip(d, x, y, s, color):
-    stroke = max(3, int(0.08 * s))
-    d.rounded_rectangle([x + 0.18 * s, y + 0.18 * s, x + 0.82 * s, y + 0.82 * s],
-                        radius=6, outline=color, width=stroke)
+def draw_chip_icon(d, x, y, s, colour):
+    d.rounded_rectangle([x + 0.18 * s, y + 0.18 * s,
+                         x + 0.82 * s, y + 0.82 * s],
+                        radius=6, outline=colour, width=5)
     d.rectangle([x + 0.38 * s, y + 0.38 * s, x + 0.62 * s, y + 0.62 * s],
-                fill=color)
+                fill=colour)
     for t in (0.30, 0.50, 0.70):
         d.line([x + 0.18 * s, y + t * s, x + 0.02 * s, y + t * s],
-               fill=color, width=stroke)
+               fill=colour, width=4)
         d.line([x + 0.82 * s, y + t * s, x + 0.98 * s, y + t * s],
-               fill=color, width=stroke)
+               fill=colour, width=4)
         d.line([x + t * s, y + 0.18 * s, x + t * s, y + 0.02 * s],
-               fill=color, width=stroke)
+               fill=colour, width=4)
         d.line([x + t * s, y + 0.82 * s, x + t * s, y + 0.98 * s],
-               fill=color, width=stroke)
+               fill=colour, width=4)
 
 
-def icon_rocket(d, x, y, s, color):
+def draw_rocket(d, x, y, s, colour):
     d.polygon([(x + 0.50 * s, y + 0.02 * s), (x + 0.68 * s, y + 0.26 * s),
-               (x + 0.32 * s, y + 0.26 * s)], fill=color)
-    d.rounded_rectangle([x + 0.32 * s, y + 0.26 * s, x + 0.68 * s, y + 0.68 * s],
-                        radius=8, fill=color)
+               (x + 0.32 * s, y + 0.26 * s)], fill=colour)
+    d.rounded_rectangle([x + 0.32 * s, y + 0.26 * s,
+                         x + 0.68 * s, y + 0.68 * s],
+                        radius=8, fill=colour)
     d.polygon([(x + 0.32 * s, y + 0.55 * s), (x + 0.14 * s, y + 0.78 * s),
-               (x + 0.32 * s, y + 0.72 * s)], fill=color)
+               (x + 0.32 * s, y + 0.72 * s)], fill=colour)
     d.polygon([(x + 0.68 * s, y + 0.55 * s), (x + 0.86 * s, y + 0.78 * s),
-               (x + 0.68 * s, y + 0.72 * s)], fill=color)
+               (x + 0.68 * s, y + 0.72 * s)], fill=colour)
     d.polygon([(x + 0.50 * s, y + 0.98 * s), (x + 0.38 * s, y + 0.70 * s),
                (x + 0.62 * s, y + 0.70 * s)], fill=RED)
 
 
-def icon_globe(d, x, y, s, color):
+def draw_globe(d, x, y, s, colour):
     cx, cy, r = x + s / 2, y + s / 2, s * 0.44
-    stroke = max(3, int(0.08 * s))
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=color, width=stroke)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=colour, width=5)
     d.ellipse([cx - r * 0.45, cy - r, cx + r * 0.45, cy + r],
-              outline=color, width=max(2, stroke - 1))
-    d.line([cx - r, cy, cx + r, cy], fill=color, width=max(2, stroke - 1))
+              outline=colour, width=3)
+    d.line([cx - r, cy, cx + r, cy], fill=colour, width=3)
     d.arc([cx - r, cy - r * 0.45, cx + r, cy + r * 0.45],
-          start=200, end=340, fill=color, width=max(2, stroke - 1))
+          start=200, end=340, fill=colour, width=3)
 
 
-ICONS = {
-    "tanker": icon_tanker,
-    "refinery": icon_refinery,
-    "chart": icon_chart,
-    "chip": icon_chip,
-    "rocket": icon_rocket,
-    "globe": icon_globe,
+ICON_DRAWERS = {
+    "tanker": draw_tanker,
+    "refinery": draw_refinery,
+    "chart": draw_chart,
+    "chip": draw_chip_icon,
+    "rocket": draw_rocket,
+    "globe": draw_globe,
 }
 
 
+# --- page ----------------------------------------------------------------
 def render(path):
-    img = Image.new("RGB", (W, H), PAPER)
+    img = Image.new("RGB", (PAGE_W, PAGE_H), PAPER)
     d = ImageDraw.Draw(img)
+    report = []
 
-    # Masthead: serif title, globe at right
-    d.rectangle([0, 0, W, 108], fill=NAVY)
-    d.text((36, 17), "THE WORLD TODAY", font=font("serif", 64), fill=WHITE)
-    icon_globe(d, 918, 26, 56, WHITE)
-    d.rectangle([0, 108, W, 114], fill=RED)
+    # Masthead: serif nameplate, globe at right, red rule underneath.
+    d.rectangle([0, 0, PAGE_W, MASTHEAD_H], fill=NAVY)
+    name_font = typeface("serif-bold", 64)
+    d.text((36, 34), "THE WORLD TODAY", font=name_font, fill=WHITE)
+    draw_globe(d, 916, (MASTHEAD_H - 54) // 2, 54, WHITE)
+    d.rectangle([0, MASTHEAD_H, PAGE_W, MASTHEAD_H + RULE_H], fill=RED)
 
-    # Date strip: the day this image sums up, big and unmistakable
-    date = "WEDNESDAY, 25 NOVEMBER 2026"
-    date_font = font("bold", 42)
-    dw = d.textlength(date, font=date_font)
-    d.text(((W - dw) / 2, 122), date, font=date_font, fill=NAVY)
+    # Date line: the day this image sums up, big and unmistakable.
+    date_font = typeface("sans-bold", 42)
+    dw = d.textlength(DATE_LINE, font=date_font)
+    d.text(((PAGE_W - dw) / 2, DATE_Y), DATE_LINE, font=date_font, fill=NAVY)
+    report.append("date: 42px, width %dpx" % dw)
 
-    # Story grid: 2 columns x 3 rows
-    gx, gy = 36, 192
-    cw, ch, gap = 469, 236, 14
+    # Story grid: 2 columns x 3 rows.
     for i, story in enumerate(STORIES):
         col, row = i % 2, i // 2
-        x = gx + col * (cw + gap)
-        y = gy + row * (ch + gap)
-        d.rounded_rectangle([x, y, x + cw, y + ch], radius=10,
+        x = GRID_X + col * (CARD_W + GAP)
+        y = GRID_TOP + row * (CARD_H + GAP)
+        d.rounded_rectangle([x, y, x + CARD_W, y + CARD_H], radius=10,
                             fill=CARD, outline=BORDER, width=2)
-        d.rectangle([x + 2, y + 14, x + 9, y + ch - 14],
-                    fill=story["color"])
-        chip(d, x + 18, y + 14, story["tag"], story["color"])
-        ICONS[story["icon"]](d, x + cw - 18 - 54, y + 10, 54,
-                             story["color"])
-        head_font, head_lines = fit_lines(d, story["headline"], "bold",
-                                          [40, 38, 36], cw - 36, 2)
-        draw_text_block(d, x + 18, y + 66, head_lines, head_font, INK, 45)
-        det_font, det_lines = fit_lines(d, story["detail"], "regular",
-                                        [30, 29, 28, 26, 24], cw - 36, 2)
-        draw_text_block(d, x + 18, y + 160, det_lines, det_font, GREY, 34)
+        d.rectangle([x + 2, y + 12, x + 8, y + CARD_H - 12],
+                    fill=story["colour"])
+        draw_chip(d, x + 18, y + 14, story["tag"], story["colour"])
+        # Icon sits in the top-right corner; the headline starts below it,
+        # so the two can never overlap.
+        ICON_DRAWERS[story["icon"]](d, x + CARD_W - 18 - 54, y + 12, 54,
+                                    story["colour"])
+        head_font, head_lines, head_size = fit_block(
+            d, story["headline"], "sans-bold", [40], TEXT_W, 2)
+        draw_lines(d, x + 18, y + 68, head_lines, head_font, INK, 48)
+        det_font, det_lines, det_size = fit_block(
+            d, story["detail"], "sans", [30, 29, 28, 26, 24], TEXT_W, 2)
+        draw_lines(d, x + 18, y + 164, det_lines, det_font, GREY, 34)
+        report.append(
+            "card %d %s: headline %dpx %d lines, detail %dpx %d lines"
+            % (i + 1, story["tag"], head_size, len(head_lines),
+               det_size, len(det_lines)))
+        if len(head_lines) != 2 or len(det_lines) != 2:
+            raise SystemExit("card %d does not fit in two lines each"
+                             % (i + 1))
 
-    # Footer strip: two more stories, one line each. The 72 px band sits
-    # 24 px below the cards; 27 px type leaves 7 px of navy above and 8 below.
-    d.rectangle([0, 952, W, H], fill=NAVY)
-    foot_font = font("bold", 27)
-    while foot_font.size > 20 and any(
-            d.textlength(t, font=foot_font) > 968 for t in FOOTER_LINES):
-        foot_font = font("bold", foot_font.size - 1)
-    for i, text in enumerate(FOOTER_LINES):
-        fw = d.textlength(text, font=foot_font)
-        d.text(((W - fw) / 2, 954 + i * 32), text, font=foot_font, fill=WHITE)
+    # Footer band: two extra stories, one line each, centred.
+    d.rectangle([0, FOOTER_Y, PAGE_W, FOOTER_Y + FOOTER_H], fill=NAVY)
+    foot_font = typeface("sans-bold", 27)
+    fy = FOOTER_Y + (FOOTER_H - (27 + 32)) // 2
+    for line in FOOTER_LINES:
+        fw = d.textlength(line, font=foot_font)
+        d.text(((PAGE_W - fw) / 2, fy), line, font=foot_font, fill=WHITE)
+        report.append("footer: 27px, width %dpx" % fw)
+        fy += 32
 
     img.save(path, format="PNG", optimize=True)
-    return path
+    return report
 
 
 if __name__ == "__main__":
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entry.png")
-    render(out)
-    size = os.path.getsize(out)
-    print(f"wrote {out} ({size} bytes)")
+    here = os.path.dirname(os.path.abspath(__file__))
+    out = os.path.join(here, "entry.png")
+    for line in render(out):
+        print(line)
+    print("wrote %s (%d bytes)" % (out, os.path.getsize(out)))
